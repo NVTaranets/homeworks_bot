@@ -24,7 +24,6 @@ homeworks_bot использует для работы следующие тех
 ```
 pip install -r requirements.txt
 ``` 
-```
 ### Авторы
 Таранец Николай
 
