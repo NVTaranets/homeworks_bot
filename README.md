@@ -1,5 +1,5 @@
 # homeworks_bot
-## _Telegram bot checking status updates on API yandex prakcikum homeworks_
+## _Telegram bot checking status updates on API yandex practicum homeworks_
 ## _Телеграм бот для информирования об изменении статуса проверки домашних работ студентов Яндекс Практикума._
 ## Функции
 
