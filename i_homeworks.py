@@ -16,7 +16,7 @@ from telegram.ext import (CommandHandler, ConversationHandler, Filters,
 from exceptions import BotError
 from bot_models import Base, Telegram
 
-RETRY_TIME = 60
+RETRY_TIME = 600
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 
 
