@@ -13,8 +13,8 @@ from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (CommandHandler, ConversationHandler, Filters,
                           MessageHandler, Updater)
 
-from exceptions import BotError
 from bot_models import Base, Telegram
+from exceptions import BotError
 
 RETRY_TIME = 600
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
@@ -30,17 +30,15 @@ load_dotenv()
 
 data_to_add = dict()
 data_to_del = dict()
+data_to_change = dict()
 
 
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN_I')
 
-updater = Updater(token=TELEGRAM_TOKEN)
-# bot = telegram.Bot(token=TELEGRAM_TOKEN)
 
-engine = create_engine('sqlite:///i_telegram.db')
+engine = create_engine('sqlite:///db/i_telegram.db')
 s = sessionmaker()
 s.configure(bind=engine)
-session = s()
 Base.metadata.create_all(engine)
 bot = telegram.Bot(token=TELEGRAM_TOKEN)
 cts = int(time.time())
@@ -51,7 +49,13 @@ cts_dict = dict()
 # Определяем константы этапов разговора
 NAME, TOKEN, STARTED, SAVE = range(4)
 
-NAME_1, SAVE_1 = range(4, 6)
+NAME_D, SAVE_D = range(4, 6)
+
+NAME_CHANGE, SAVE_CHANGE = range(6, 8)
+
+S_ALL_CHANGE = 8
+
+S_CLEAR = 9
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -65,6 +69,15 @@ formatter = logging.Formatter(
     '%(asctime)s %(levelname)s %(message)s'
 )
 handler.setFormatter(formatter)
+
+while True:
+    try:
+        updater = Updater(token=TELEGRAM_TOKEN)
+        # bot = telegram.Bot(token=TELEGRAM_TOKEN)
+        break
+    except Exception as error:
+        logger.error(error)
+        time.sleep(30)
 
 
 def all_key_in_dict(keys, examine_dict):
@@ -143,11 +156,9 @@ def help(update, context):
 /add_course - добавить курс
 /del_course - удалить курс
 /list_course - показать все курсы
-/enable - разрешить проверку курса
-/disable - запретить проверку курса
-/dis_all - запретить все
-/en_all - разрешить все
-/clear - очистить настройки
+/change - изменить опрос
+/change_all - запретить все
+/clear - очистить (удалить) настройки
 ''')
     return ConversationHandler.END
 
@@ -193,7 +204,8 @@ def name_add(update, context):
     """обработка этапов 'беседы'."""
     user = update.message.from_user
     # проверяем дублирование наименований курсов
-    imput_name=' '.join(update.message.text.split())
+    imput_name = ' '.join(update.message.text.split())
+    session = s()
     course_count = (
         session.query(Telegram)
         .filter(Telegram.chat_id == update.effective_chat.id,
@@ -219,6 +231,7 @@ def name_add(update, context):
 Придумай другое имя для курса
 или отправь /cancel_add, если передумал.''',
     )
+    session = None
     return NAME
 
 
@@ -226,10 +239,12 @@ def token(update, context):
     """обработка этапов 'беседы'."""
     user = update.message.from_user
     # проверяем дублирование токенов
+    session = s()
     token_count = (
         session.query(Telegram)
         .filter(Telegram.practicum_token == update.message.text)
     ).count()
+    session = None
     if token_count == 0:
         try:
             get_api_answer(0, update.message.text)
@@ -303,9 +318,11 @@ def save(update, context):
             practicum_token=data[1],
             started=(data[2] == 'Да')
         )
+        session = s()
         session.add(new)
         # Commit to the database
         session.commit()
+        session = None
 
     # уберем данные о содержании беседы пользователя
     data_to_add.pop(update.effective_chat.id, None)
@@ -343,22 +360,24 @@ def del_course(update, context):
         text='''
 Как называется курс который вы \
 хотели бы удалить из отслеживаемых?
-Его название должно быть уникальным для вас.
+Его название должно быть в вашем списке.
 (введите команду /cancel_del если хотите прервать диалог удаления курса)
 '''
     )
-    return NAME_1
+    return NAME_D
 
 
 def name_del(update, context):
     """обработка этапов 'беседы'."""
     user = update.message.from_user
     # проверяем наличие курса
+    session = s()
     course = (
         session.query(Telegram)
         .filter(Telegram.chat_id == update.effective_chat.id,
                 Telegram.name == update.message.text)
     ).count()
+    session = None
     if course > 0:
         logger.info(
             f'Курс {user.first_name}: c именем = "{update.message.text}"'
@@ -374,7 +393,7 @@ def name_del(update, context):
             reply_markup=markup_key
         )
         data_to_del[update.effective_chat.id] = update.message.text
-        return SAVE_1
+        return SAVE_D
 
     logger.info(
         f'Курс {user.first_name}: c именем = {update.message.text} '
@@ -386,18 +405,20 @@ def name_del(update, context):
         'Введите правильное существующие имя курса или '
         'команду /cancel_del если хотите прервать диалог удаления курса.'
     )
-    return NAME_1
+    return NAME_D
 
 
 def delete(update, context):
     """Функция завершения обработки команды /del_course."""
     user = update.message.from_user
     if update.message.text == 'Удалить':
+        session = s()
         session.query(Telegram).filter(
             Telegram.name == data_to_del[update.effective_chat.id],
             Telegram.chat_id == update.effective_chat.id
         ).delete(synchronize_session='fetch')
         session.commit()
+        session = None
         logger.info(
             f'Курс {user.first_name}: c именем = '
             f'{data_to_del[update.effective_chat.id]} удален для '
@@ -433,12 +454,18 @@ def cancel_del(update, context):
 def list_course(update, context):
     """Функция обработки команды /list_course."""
     chat = update.effective_chat
+    session = s()
     list_user_course = session.query(Telegram.name, Telegram.started).filter(
         Telegram.chat_id == update.effective_chat.id
     ).order_by(Telegram.started, Telegram.name).all()
-    print_user_course = '\r\n'.join(
-        [f'\"{a}\" - {"ВКЛ." if b else "ВЫКЛ."}' for a, b in list_user_course]
-    )
+    session = None
+    if len(list_user_course) == 0:
+        print_user_course = 'пока пуст!'
+    else:
+        print_user_course = '\r\n'.join(
+            [f'\"{a}\" - {"ВКЛ." if b else "ВЫКЛ."}'
+             for a, b in list_user_course]
+        )
     context.bot.send_message(
         chat_id=chat.id,
         text=f'Список ваших курсов: \r\n\r\n{print_user_course}'
@@ -446,29 +473,233 @@ def list_course(update, context):
     return ConversationHandler.END
 
 
-def enable(update, context):
-    """Функция обработки команды /enable."""
-    ...
+def change(update, context):
+    """Функция обработки команды /change."""
+    chat = update.effective_chat
+    user = update.message.from_user
+    logger.info(
+        f"Пользователь {user.first_name} начал диалог change курса"
+    )
+    context.bot.send_message(
+        chat_id=chat.id,
+        text='''
+Как называется курс которому вы \
+хотели бы изменить режим опроса?
+(введите команду /cancel_change если хотите прервать диалог)
+'''
+    )
+    return NAME_CHANGE
 
 
-def disable(update, context):
-    """Функция обработки команды /enable."""
-    ...
+def name_change(update, context):
+    """обработка этапов 'беседы'."""
+    user = update.message.from_user
+    # проверяем наличие курса
+    session = s()
+    course = (
+        session.query(Telegram)
+        .filter(Telegram.chat_id == update.effective_chat.id,
+                Telegram.name == update.message.text)
+    ).count()
+    session = None
+    if course > 0:
+        logger.info(
+            f'Курс {user.first_name}: c именем = "{update.message.text}"'
+            ' выбран для изменения режима!!!'
+        )
+        reply_keyboard = [['Включить', 'Выключить']]
+        markup_key = ReplyKeyboardMarkup(
+            reply_keyboard,
+            one_time_keyboard=True)
+        update.message.reply_text(
+            f'Выбери состояние опроса курса "{update.message.text}" '
+            'или отправь /cancel_change, если еще не решил что делать.',
+            reply_markup=markup_key
+        )
+        data_to_change[update.effective_chat.id] = update.message.text
+        return SAVE_CHANGE
+
+    logger.info(
+        f'Курс {user.first_name}: c именем = {update.message.text} '
+        'выбранный для управления режимом опроса не существует!!!'
+    )
+    update.message.reply_text(
+        f'Курс {user.first_name}: c именем = {update.message.text} '
+        'выбранный для изменения не существует!!!\r\n'
+        'Введите правильное существующие имя курса или '
+        'команду /cancel_change если хотите прервать диалог управления курсом.'
+    )
+    return NAME_CHANGE
 
 
-def dis_all(update, context):
-    """Функция обработки команды /enable."""
-    ...
+def save_change(update, context):
+    """Функция завершения обработки команды /change_course."""
+    user = update.message.from_user
+    if update.message.text == 'Включить':
+        new_started = True
+    else:
+        new_started = False
+    session = s()
+    session.query(Telegram).filter(
+        Telegram.name == data_to_change[update.effective_chat.id],
+        Telegram.chat_id == update.effective_chat.id
+    ).update({"started": new_started}, synchronize_session='fetch')
+    session.commit()
+    session = None
+    logger.info(
+        f'Курс {user.first_name}: c именем = '
+        f'{data_to_change[update.effective_chat.id]} именен для '
+        f'чата id= {update.effective_chat.id} состояние {update.message.text}.'
+    )
+    update.message.reply_text(
+        f'Курс {user.first_name}: c именем = '
+        f'{data_to_change[update.effective_chat.id]} именен'
+        f'новое состояние {update.message.text}.',
+        reply_markup=ReplyKeyboardRemove()
+    )
+    data_to_change.pop(update.effective_chat.id, None)
+    return ConversationHandler.END
 
 
-def en_all(update, context):
-    """Функция обработки команды /enable."""
-    ...
+# Обрабатываем команду /cancel_change если пользователь отменил разговор
+def cancel_change(update, context):
+    """обработка этапов 'беседы'."""
+    user = update.message.from_user
+    # Пишем в журнал о том, что пользователь не разговорчивый
+    logger.info("Пользователь %s отменил изменение курса.", user.first_name)
+    update.message.reply_text(
+        'Изменять ничего не будем).'
+        ' Передумаешь - пиши.',
+        reply_markup=ReplyKeyboardRemove()
+    )
+    # Заканчиваем разговор.
+    data_to_change.pop(update.effective_chat.id, None)
+    return ConversationHandler.END
+
+
+def change_all(update, context):
+    """обработка этапов 'беседы'."""
+    user = update.message.from_user
+    # проверяем наличие курса
+    reply_keyboard = [['Включить', 'Выключить']]
+    markup_key = ReplyKeyboardMarkup(
+        reply_keyboard,
+        one_time_keyboard=True)
+    update.message.reply_text(
+        'Выбери состояние опроса своих курсов '
+        'или отправь /cancel_all, если еще не решил что делать.',
+        reply_markup=markup_key
+    )
+
+    logger.info(
+        f'Пользователь {user.first_name} начал диалог изменения '
+        'всех своих курсов!!!'
+    )
+    return S_ALL_CHANGE
+
+
+def save_all_change(update, context):
+    """Функция завершения обработки команды /change_all."""
+    user = update.message.from_user
+    if update.message.text == 'Включить':
+        new_started = True
+    else:
+        new_started = False
+    session = s()
+    session.query(Telegram).filter(
+        Telegram.chat_id == update.effective_chat.id
+    ).update({"started": new_started}, synchronize_session='fetch')
+    session.commit()
+    session = None
+    logger.info(
+        f'Курсы {user.first_name} изменены для '
+        f'чата id= {update.effective_chat.id} состояние {update.message.text}.'
+    )
+    update.message.reply_text(
+        f'Курсы {user.first_name} изменены для чата '
+        f'id= {update.effective_chat.id} состояние {update.message.text}.',
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ConversationHandler.END
+
+
+# Обрабатываем команду /cancel_all_change если пользователь отменил разговор
+def cancel_all_change(update, context):
+    """обработка этапов 'беседы'."""
+    user = update.message.from_user
+    # Пишем в журнал о том, что пользователь не разговорчивый
+    logger.info(f'Пользователь {user.first_name} отменил изменение курсов.')
+    update.message.reply_text(
+        'Изменять ничего не будем).'
+        ' Передумаешь - пиши.',
+        reply_markup=ReplyKeyboardRemove()
+    )
+    # Заканчиваем разговор.
+    return ConversationHandler.END
 
 
 def clear(update, context):
-    """Функция обработки команды /enable."""
-    ...
+    """Функция обработки команды /clear."""
+    user = update.message.from_user
+    reply_keyboard = [['Очистить', 'Отменить']]
+    markup_key = ReplyKeyboardMarkup(
+        reply_keyboard,
+        one_time_keyboard=True)
+    update.message.reply_text(
+        'выбери что мне сделать '
+        'или отправь /cancel_clear, если еще не решил что делать.',
+        reply_markup=markup_key
+    )
+
+    logger.info(
+        f'Пользователь {user.first_name} начал диалог очистки '
+        'всех своих курсов!!!'
+    )
+    return S_CLEAR
+
+
+def save_clear(update, context):
+    """Функция завершения обработки команды /change_all."""
+    user = update.message.from_user
+    if update.message.text == 'Очистить':
+        session = s()
+        session.query(Telegram).filter(
+            Telegram.chat_id == update.effective_chat.id
+        ).delete(synchronize_session='fetch')
+        session.commit()
+        session = None
+        logger.info(
+            f'Курсы {user.first_name} удалены для '
+            f'чата id= {update.effective_chat.id}.'
+        )
+        update.message.reply_text(
+            f'Курсы {user.first_name} удалены!!!.',
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    logger.info(f'Пользователь {user.first_name} отменил удаление курсов.')
+    update.message.reply_text(
+        'Удалять ничего не будем).'
+        ' Передумаешь - пиши.',
+        reply_markup=ReplyKeyboardRemove()
+    )
+    # Заканчиваем разговор.
+    return ConversationHandler.END
+
+
+# Обрабатываем команду /cancel_clear если пользователь отменил разговор
+def cancel_clear(update, context):
+    """обработка этапов 'беседы'."""
+    user = update.message.from_user
+    # Пишем в журнал о том, что пользователь не разговорчивый
+    logger.info(f'Пользователь {user.first_name} отменил удаление курсов.')
+    update.message.reply_text(
+        'Удалять ничего не будем).'
+        ' Передумаешь - пиши.',
+        reply_markup=ReplyKeyboardRemove()
+    )
+    # Заканчиваем разговор.
+    return ConversationHandler.END
 
 
 def text_processing(update, context):
@@ -506,6 +737,7 @@ def my_callback(context):
     """Функция выполняется периодически."""
     cts = int(time.time())
     logger.info(f'cts = {cts}')
+    session = s()
     courses = (
         session.query(
             Telegram.name,
@@ -513,6 +745,7 @@ def my_callback(context):
             Telegram.practicum_token)
         .filter(Telegram.started)
     ).all()
+    session = None
     for t_name, t_chat_id, p_token in courses:
         n_cns = cts_dict.setdefault(t_chat_id, cts)
         try:
@@ -564,15 +797,16 @@ def main():
         # точка выхода из разговора
         fallbacks=[CommandHandler('cancel_add', cancel_add)],
     )
+
     c_h_del_course = ConversationHandler(  # здесь строится логика разговора
         # точка входа в разговор
         entry_points=[CommandHandler('del_course', del_course)],
         # этапы разговора, каждый со своим списком обработчиков сообщений
         states={
-            NAME_1: [MessageHandler(
+            NAME_D: [MessageHandler(
                 Filters.text & ~Filters.command, name_del)
             ],
-            SAVE_1: [MessageHandler(
+            SAVE_D: [MessageHandler(
                 Filters.regex('^(Удалить|Отменить)$'), delete)
             ],
         },
@@ -580,17 +814,72 @@ def main():
         fallbacks=[CommandHandler('cancel_del', cancel_del)],
     )
 
+    c_h_change = ConversationHandler(  # здесь строится логика разговора
+        # точка входа в разговор
+        entry_points=[CommandHandler('change', change)],
+        # этапы разговора, каждый со своим списком обработчиков сообщений
+        states={
+            NAME_CHANGE: [MessageHandler(Filters.text & ~Filters.command,
+                                         name_change)],
+            SAVE_CHANGE: [MessageHandler(
+                Filters.regex('^(Включить|Выключить)$'), save_change)],
+        },
+        # точка выхода из разговора
+        fallbacks=[CommandHandler('cancel_change', cancel_change)],
+    )
+
+    c_h_change_all = ConversationHandler(  # здесь строится логика разговора
+        # точка входа в разговор
+        entry_points=[CommandHandler('change_all', change_all)],
+        # этапы разговора, каждый со своим списком обработчиков сообщений
+        states={
+            S_ALL_CHANGE: [MessageHandler(
+                Filters.regex('^(Включить|Выключить)$'), save_all_change)],
+        },
+        # точка выхода из разговора
+        fallbacks=[CommandHandler('cancel_all', cancel_all_change)],
+    )
+
+    c_h_clear = ConversationHandler(  # здесь строится логика разговора
+        # точка входа в разговор
+        entry_points=[CommandHandler('clear', clear)],
+        # этапы разговора, каждый со своим списком обработчиков сообщений
+        states={
+            S_CLEAR: [MessageHandler(
+                Filters.regex('^(Очистить|Отменить)$'), save_clear)],
+        },
+        # точка выхода из разговора
+        fallbacks=[CommandHandler('cancel_clear', cancel_clear)],
+    )
+
+    session = s()
+    all_client = (
+        session.query(Telegram.chat_id)
+        .filter(Telegram.started).distinct()
+    ).all()
+    session = None
+
+    for client in all_client:
+        try:
+            send_message(bot, client[0], "Бот запущен!")
+        except Exception as error:
+            logger.error(f'Ощибка {error} при отправки сообщения '
+                         f'о старте в чат {client}')
+
     updater.dispatcher.add_handler(CommandHandler('start', wake_up))
     updater.dispatcher.add_handler(CommandHandler('about', about))
     updater.dispatcher.add_handler(CommandHandler('help', help))
     updater.dispatcher.add_handler(CommandHandler('list_course', list_course))
-    updater.dispatcher.add_handler(CommandHandler('enable', enable))
-    updater.dispatcher.add_handler(CommandHandler('disable', disable))
-    updater.dispatcher.add_handler(CommandHandler('dis_all', dis_all))
-    updater.dispatcher.add_handler(CommandHandler('en_all', en_all))
-    updater.dispatcher.add_handler(CommandHandler('clear', clear))
+    # updater.dispatcher.add_handler(CommandHandler('enable', enable))
+    # updater.dispatcher.add_handler(CommandHandler('disable', disable))
+    # updater.dispatcher.add_handler(CommandHandler('dis_all', dis_all))
+    # updater.dispatcher.add_handler(CommandHandler('en_all', en_all))
+    # updater.dispatcher.add_handler(CommandHandler('clear', clear))
     updater.dispatcher.add_handler(c_h_add_course)
     updater.dispatcher.add_handler(c_h_del_course)
+    updater.dispatcher.add_handler(c_h_change)
+    updater.dispatcher.add_handler(c_h_change_all)
+    updater.dispatcher.add_handler(c_h_clear)
     updater.dispatcher.add_handler(MessageHandler(Filters.command, unknown))
     updater.dispatcher.add_handler(
         MessageHandler(Filters.text, text_processing)
