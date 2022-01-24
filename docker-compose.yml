@@ -4,8 +4,10 @@ version: '3'
 services:
 
   homeworksbot:
+    build: .
     container_name: homeworksbot
-    image: ./homeworksbot
-    restart: always
+    restart: unless-stopped
+    env_file:
+      - .env
     volumes:
-      - .env:app/.env
+      - db:db:/app/db
