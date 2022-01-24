@@ -24,6 +24,20 @@ homeworks_bot использует для работы следующие тех
 ```
 pip install -r requirements.txt
 ``` 
+- создайте файл переменной окружения .env (пример .env_samle.txt)
+- запустите бота
+```
+python3 i_homeworks.py
+``` 
+### Запуск проекта в контейнере
+- установите docker
+- запустите построение образа
+```
+docker build --pull -f "dockerfile" -t homeworksbot:latest "."
+docker run --env TELEGRAM_TOKEN_I=YOU_BOT_TELEGRAM_TOKEN --name homeworksbot -v db:/app/db  homeworksbot
+
+```
+
 ### Авторы
 Таранец Николай
 
