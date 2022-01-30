@@ -215,7 +215,7 @@ def name_add(update, context):
         logger.info(
             f'Новый курс {user.first_name}: c именем = {imput_name}'
         )
-        data_to_add[update.effective_chat.id] = imput_name
+        data_to_add[update.effective_chat.id] = [imput_name, ]
         update.message.reply_text(
             'Хорошо, сообщи мне ТОКЕН доступа к ENDPOINT сервиса '
             'проверки статуса ДЗ, или отправь /cancel_add, если передумал.',
@@ -260,9 +260,7 @@ def token(update, context):
             return TOKEN
 
         logger.info(f'Токен {user.first_name}: {update.message.text}')
-        data_to_add[update.effective_chat.id] = (
-            data_to_add[update.effective_chat.id]
-            + '\r\n' + update.message.text)
+        data_to_add[update.effective_chat.id].append(update.message.text)
         reply_keyboard = [['Да', 'Нет']]
         markup_key = ReplyKeyboardMarkup(
             reply_keyboard,
@@ -279,16 +277,14 @@ def token(update, context):
 Упс... А этот токен уже кем-то был выбран(.
 Сообщи мне уникальный токен или отправь /cancel_add, если передумал.''',
     )
-    return NAME
+    return TOKEN
 
 
 def started(update, context):
     """обработка этапов 'беседы'."""
     reply_keyboard = [['Сохранить', 'Отменить']]
     markup_key = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
-    data_to_add[update.effective_chat.id] = (
-        data_to_add[update.effective_chat.id]
-        + '\r\n' + update.message.text)
+    data_to_add[update.effective_chat.id].append(update.message.text)
     update.message.reply_text(
         'Выберите действие?',
         reply_markup=markup_key,)
@@ -298,9 +294,7 @@ def started(update, context):
 def save(update, context):
     """обработка этапов 'беседы'."""
     user = update.message.from_user
-    data_to_add[update.effective_chat.id] = (
-        data_to_add[update.effective_chat.id]
-        + '\r\n' + update.message.text)
+    data_to_add[update.effective_chat.id].append(update.message.text)
     logger.info(
         f'Пользователь {user.first_name} '
         f'сообщил в беседе: {data_to_add[update.effective_chat.id]}',
@@ -310,7 +304,7 @@ def save(update, context):
         '\r\nСпасибо! Надеюсь, когда-нибудь снова сможем поговорить.',
         reply_markup=ReplyKeyboardRemove()
     )
-    data = data_to_add[update.effective_chat.id].split('\r\n')
+    data = data_to_add[update.effective_chat.id]
     if data[3] == 'Сохранить':
         new = Telegram(
             chat_id=update.effective_chat.id,
@@ -335,9 +329,7 @@ def cancel_add(update, context):
     user = update.message.from_user
     # Пишем в журнал о том, что пользователь не разговорчивый
     logger.info("Пользователь %s отменил добавление курса.", user.first_name)
-    data_to_add[update.effective_chat.id] = (
-        data_to_add[update.effective_chat.id]
-        + '\r\n' + update.message.text)
+    data_to_add[update.effective_chat.id].append(update.message.text)
     update.message.reply_text(
         'Мое дело предложить - Ваше отказаться.'
         ' Передумаешь - пиши.',
