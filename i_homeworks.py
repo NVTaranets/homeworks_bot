@@ -181,7 +181,7 @@ https://oauth.yandex.ru/authorize?response_type=token&client_id=1d0b9dd4d652455a
 
 
 def add_course(update, context):
-    """Функция обработки команды /add_course."""
+    """Функция начала диагога обработки команды /add_course."""
     chat = update.effective_chat
     user = update.message.from_user
     data_to_add[update.effective_chat.id] = ''
@@ -201,7 +201,7 @@ def add_course(update, context):
 
 
 def name_add(update, context):
-    """обработка этапов 'беседы'."""
+    """обработка этапа 'диалога' добавления курса  проверка имени."""
     user = update.message.from_user
     # проверяем дублирование наименований курсов
     imput_name = ' '.join(update.message.text.split())
@@ -236,7 +236,7 @@ def name_add(update, context):
 
 
 def token(update, context):
-    """обработка этапов 'беседы'."""
+    """обработка этапа 'беседы' добавления курса проверка токена."""
     user = update.message.from_user
     # проверяем дублирование токенов
     session = s()
@@ -281,7 +281,8 @@ def token(update, context):
 
 
 def started(update, context):
-    """обработка этапов 'беседы'."""
+    """обработка этапа 'беседы' добавления курса"""
+     """проверка активации сканирования статуса."""
     reply_keyboard = [['Сохранить', 'Отменить']]
     markup_key = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
     data_to_add[update.effective_chat.id].append(update.message.text)
@@ -292,7 +293,7 @@ def started(update, context):
 
 
 def save(update, context):
-    """обработка этапов 'беседы'."""
+    """обработка этапа 'беседы' добавления курса сохранений или отказ."""
     user = update.message.from_user
     data_to_add[update.effective_chat.id].append(update.message.text)
     logger.info(
@@ -325,7 +326,7 @@ def save(update, context):
 
 # Обрабатываем команду /cancel_add если пользователь отменил разговор
 def cancel_add(update, context):
-    """обработка этапов 'беседы'."""
+    """обработка отмены 'беседы' добавления курса."""
     user = update.message.from_user
     # Пишем в журнал о том, что пользователь не разговорчивый
     logger.info("Пользователь %s отменил добавление курса.", user.first_name)
@@ -360,7 +361,7 @@ def del_course(update, context):
 
 
 def name_del(update, context):
-    """обработка этапов 'беседы'."""
+    """обработка этапов 'беседы' удаления курса проверка имени."""
     user = update.message.from_user
     # проверяем наличие курса
     session = s()
@@ -429,7 +430,7 @@ def delete(update, context):
 
 # Обрабатываем команду /cancel_del если пользователь отменил разговор
 def cancel_del(update, context):
-    """обработка этапов 'беседы'."""
+    """обработка отмены 'беседы' удаления курса."""
     user = update.message.from_user
     # Пишем в журнал о том, что пользователь не разговорчивый
     logger.info("Пользователь %s отменил удаление курса.", user.first_name)
@@ -570,7 +571,7 @@ def cancel_change(update, context):
 
 
 def change_all(update, context):
-    """обработка этапов 'беседы'."""
+    """обработка этапов 'беседы' смены состояния опроса всех курсов."""
     user = update.message.from_user
     # проверяем наличие курса
     reply_keyboard = [['Включить', 'Выключить']]
@@ -651,7 +652,7 @@ def clear(update, context):
 
 
 def save_clear(update, context):
-    """Функция завершения обработки команды /change_all."""
+    """Функция завершения обработки команды /clear."""
     user = update.message.from_user
     if update.message.text == 'Очистить':
         session = s()
@@ -862,11 +863,6 @@ def main():
     updater.dispatcher.add_handler(CommandHandler('about', about))
     updater.dispatcher.add_handler(CommandHandler('help', help))
     updater.dispatcher.add_handler(CommandHandler('list_course', list_course))
-    # updater.dispatcher.add_handler(CommandHandler('enable', enable))
-    # updater.dispatcher.add_handler(CommandHandler('disable', disable))
-    # updater.dispatcher.add_handler(CommandHandler('dis_all', dis_all))
-    # updater.dispatcher.add_handler(CommandHandler('en_all', en_all))
-    # updater.dispatcher.add_handler(CommandHandler('clear', clear))
     updater.dispatcher.add_handler(c_h_add_course)
     updater.dispatcher.add_handler(c_h_del_course)
     updater.dispatcher.add_handler(c_h_change)
