@@ -1,5 +1,5 @@
 # импортируем классы, используемые для определения атрибутов модели
-from sqlalchemy import Boolean, Column, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, BigInteger, Column, Integer, String, UniqueConstraint
 # объект для подключения ядро базы данных
 from sqlalchemy.ext.declarative import declarative_base
 

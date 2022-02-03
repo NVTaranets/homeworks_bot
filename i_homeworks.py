@@ -26,6 +26,33 @@ HOMEWORK_VERDICTS = {
     'rejected': 'Работа проверена: у ревьюера есть замечания.'
 }
 
+HELP_TEXT = '''
+Команды которые понимает бот:
+/start - старт
+/help - помощь
+/about - о боте
+/add_course - добавить курс
+/del_course - удалить курс
+/list_course - показать все курсы
+/change - изменить опрос
+/change_all - запретить все
+/clear - очистить (удалить) настройки
+'''
+
+ABOUT_TEXT = '''
+Бот написан для отслеживания изменения статусов проверки домашних работ \
+студентов Яндекс практикума через запросы  к API сервиса Практикум.Домашка.
+На данный момент проверена работа с API для курса "Python-developer-plus.
+Для доступа к сервису необходимо сообщить боту свой токен узнать который \
+можно по ссылке \
+https://oauth.yandex.ru/authorize?response_type=token&client_id=1d0b9dd4d652455a9eb710d450ff456a
+курс можно добавить по комаде /add_course
+список добавленных курсов посмотреть по команде /list_course
+'''
+
+KEYS_RESPONCE_REQUIRED = ['homeworks', 'current_date']
+KEYS_HOMEWORK_REQUIRED = ['homework_name', 'status', 'date_updated']
+
 load_dotenv()
 
 data_to_add = dict()
@@ -37,8 +64,8 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN_I')
 
 
 engine = create_engine('sqlite:///db/i_telegram.db')
-s = sessionmaker()
-s.configure(bind=engine)
+s_maker = sessionmaker()
+s_maker.configure(bind=engine)
 Base.metadata.create_all(engine)
 bot = telegram.Bot(token=TELEGRAM_TOKEN)
 cts = int(time.time())
@@ -101,7 +128,7 @@ def check_response(response):
     """Проверка правильности ответа API."""
     if not isinstance(response, dict):
         raise TypeError('От API домашки ожидался словарь в ответ на запрос!!!')
-    if (all_key_in_dict(['homeworks', 'current_date'], response)):
+    if (all_key_in_dict(KEYS_RESPONCE_REQUIRED, response)):
         result = response['homeworks']
         if isinstance(result, list):
             return result
@@ -113,11 +140,7 @@ def parse_status(homework):
     if not isinstance(homework, dict):
         raise TypeError('От API домашки ожидался словарь в '
                         'для расшифровки статуса работы!!!')
-    if not (
-        all_key_in_dict([
-            'homework_name',
-            'status',
-            'date_updated'], homework)):
+    if not (all_key_in_dict(KEYS_HOMEWORK_REQUIRED, homework)):
         raise KeyError('Нет необходимых ключей в словаре'
                        f' домашней работы {homework}')
     name = homework['homework_name']
@@ -130,53 +153,42 @@ def parse_status(homework):
 
 def wake_up(update, context):
     """Функция обработки команды старт."""
-    chat = update.effective_chat
-    context.bot.send_message(chat_id=chat.id,
-                             text='Спасибо, что включили меня')
+    send_message(
+        context.bot,
+        update.effective_chat.id,
+        'Спасибо, что включили меня'
+    )
     return ConversationHandler.END
 
 
 def unknown(update, context):
     """Функция обработки неизвестных команд."""
-    chat = update.effective_chat
-    context.bot.send_message(chat_id=chat.id,
-                             text='Простите, я вас не понял.')
+    send_message(
+        context.bot,
+        update.effective_chat.id,
+        'Простите, я вас не понял.'
+    )
+
     return ConversationHandler.END
 
 
 def help(update, context):
     """Функция обработки команды /help."""
-    chat = update.effective_chat
-    context.bot.send_message(chat_id=chat.id,
-                             text='''
-Команды которые понимает бот:
-/start - старт
-/help - помощь
-/about - о боте
-/add_course - добавить курс
-/del_course - удалить курс
-/list_course - показать все курсы
-/change - изменить опрос
-/change_all - запретить все
-/clear - очистить (удалить) настройки
-''')
+    send_message(
+        context.bot,
+        update.effective_chat.id,
+        HELP_TEXT
+    )
     return ConversationHandler.END
 
 
 def about(update, context):
     """Функция обработки команды /about."""
-    chat = update.effective_chat
-    context.bot.send_message(chat_id=chat.id,
-                             text='''
-Бот написан для отслеживания изменения статусов проверки домашних работ \
-студентов Яндекс практикума через запросы  к API сервиса Практикум.Домашка.
-На данный момент проверена работа с API для курса "Python-developer-plus.
-Для доступа к сервису необходимо сообщить боту свой токен узнать который \
-можно по ссылке \
-https://oauth.yandex.ru/authorize?response_type=token&client_id=1d0b9dd4d652455a9eb710d450ff456a
-курс можно добавить по комаде /add_course
-список добавленных курсов посмотреть по команде /list_course
-''')
+    send_message(
+        context.bot,
+        update.effective_chat.id,
+        ABOUT_TEXT
+    )
     return ConversationHandler.END
 
 
@@ -184,13 +196,14 @@ def add_course(update, context):
     """Функция начала диагога обработки команды /add_course."""
     chat = update.effective_chat
     user = update.message.from_user
-    data_to_add[update.effective_chat.id] = ''
+    data_to_add[chat.id] = ''
     logger.info(
         f"Пользователь {user.first_name} начал процесс добавление курса"
     )
-    context.bot.send_message(
-        chat_id=chat.id,
-        text='''
+    send_message(
+        context.bot,
+        chat.id,
+        '''
 Как называется курс статус домашки которого вы \
 хотели бы добавить в отслеживаемые?
 Его название должно быть уникальным для вас.
@@ -205,7 +218,7 @@ def name_add(update, context):
     user = update.message.from_user
     # проверяем дублирование наименований курсов
     imput_name = ' '.join(update.message.text.split())
-    session = s()
+    session = s_maker()
     course_count = (
         session.query(Telegram)
         .filter(Telegram.chat_id == update.effective_chat.id,
@@ -239,50 +252,51 @@ def token(update, context):
     """обработка этапа 'беседы' добавления курса проверка токена."""
     user = update.message.from_user
     # проверяем дублирование токенов
-    session = s()
+    session = s_maker()
     token_count = (
         session.query(Telegram)
         .filter(Telegram.practicum_token == update.message.text)
     ).count()
     session = None
-    if token_count == 0:
-        try:
-            get_api_answer(0, update.message.text)
-        except (BotError, Exception) as error:
-            logger.error(
-                f'Токен {user.first_name}: {update.message.text} '
-                f'{error}')
-            update.message.reply_text(
-                f'Упс... Ошибка {error} при проверке токена .\r\n'
-                'Токен неправильный или недоступен сервис проверки ДЗ. '
-                'Введи другой токен отправь /cancel_add, и попробуй позже.',
-            )
-            return TOKEN
-
-        logger.info(f'Токен {user.first_name}: {update.message.text}')
-        data_to_add[update.effective_chat.id].append(update.message.text)
-        reply_keyboard = [['Да', 'Нет']]
-        markup_key = ReplyKeyboardMarkup(
-            reply_keyboard,
-            one_time_keyboard=True
-        )
+    if token_count > 0:
+        logger.info(f'Токен {user.first_name}: {update.message.text} '
+                    ' уже существует!!!')
         update.message.reply_text(
-            'Активировать проверку статусов?',
-            reply_markup=markup_key,)
-        return STARTED
-    logger.info(f'Токен {user.first_name}: {update.message.text} '
-                ' уже существует!!!')
-    update.message.reply_text(
-        '''
+            '''
 Упс... А этот токен уже кем-то был выбран(.
 Сообщи мне уникальный токен или отправь /cancel_add, если передумал.''',
+        )
+        return TOKEN
+    try:
+        get_api_answer(0, update.message.text)
+    except (BotError, Exception) as error:
+        logger.error(
+            f'Токен {user.first_name}: {update.message.text} '
+            f'{error}')
+        update.message.reply_text(
+            f'Упс... Ошибка {error} при проверке токена .\r\n'
+            'Токен неправильный или недоступен сервис проверки ДЗ. '
+            'Введи другой токен отправь /cancel_add, и попробуй позже.',
+        )
+        return TOKEN
+
+    logger.info(f'Токен {user.first_name}: {update.message.text}')
+    data_to_add[update.effective_chat.id].append(update.message.text)
+    reply_keyboard = [['Да', 'Нет']]
+    markup_key = ReplyKeyboardMarkup(
+        reply_keyboard,
+        one_time_keyboard=True
     )
-    return TOKEN
+    update.message.reply_text(
+        'Активировать проверку статусов?',
+        reply_markup=markup_key,)
+    return STARTED
 
 
 def started(update, context):
-    """обработка этапа 'беседы' добавления курса"""
-     """проверка активации сканирования статуса."""
+    """обработка этапа 'беседы' добавления курса.
+    Проверка активации сканирования статуса.
+    """
     reply_keyboard = [['Сохранить', 'Отменить']]
     markup_key = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
     data_to_add[update.effective_chat.id].append(update.message.text)
@@ -313,7 +327,7 @@ def save(update, context):
             practicum_token=data[1],
             started=(data[2] == 'Да')
         )
-        session = s()
+        session = s_maker()
         session.add(new)
         # Commit to the database
         session.commit()
@@ -343,14 +357,14 @@ def cancel_add(update, context):
 
 def del_course(update, context):
     """Функция начала обработки команды /del_course."""
-    chat = update.effective_chat
     user = update.message.from_user
     logger.info(
         f"Пользователь {user.first_name} начал процесс удаления курса"
     )
-    context.bot.send_message(
-        chat_id=chat.id,
-        text='''
+    send_message(
+        context.bot,
+        update.effective_chat.id,
+        '''
 Как называется курс который вы \
 хотели бы удалить из отслеживаемых?
 Его название должно быть в вашем списке.
@@ -364,7 +378,7 @@ def name_del(update, context):
     """обработка этапов 'беседы' удаления курса проверка имени."""
     user = update.message.from_user
     # проверяем наличие курса
-    session = s()
+    session = s_maker()
     course = (
         session.query(Telegram)
         .filter(Telegram.chat_id == update.effective_chat.id,
@@ -405,7 +419,7 @@ def delete(update, context):
     """Функция завершения обработки команды /del_course."""
     user = update.message.from_user
     if update.message.text == 'Удалить':
-        session = s()
+        session = s_maker()
         session.query(Telegram).filter(
             Telegram.name == data_to_del[update.effective_chat.id],
             Telegram.chat_id == update.effective_chat.id
@@ -446,8 +460,7 @@ def cancel_del(update, context):
 
 def list_course(update, context):
     """Функция обработки команды /list_course."""
-    chat = update.effective_chat
-    session = s()
+    session = s_maker()
     list_user_course = session.query(Telegram.name, Telegram.started).filter(
         Telegram.chat_id == update.effective_chat.id
     ).order_by(Telegram.started, Telegram.name).all()
@@ -459,23 +472,24 @@ def list_course(update, context):
             [f'\"{a}\" - {"ВКЛ." if b else "ВЫКЛ."}'
              for a, b in list_user_course]
         )
-    context.bot.send_message(
-        chat_id=chat.id,
-        text=f'Список ваших курсов: \r\n\r\n{print_user_course}'
+    send_message(
+        context.bot,
+        update.effective_chat.id,
+        f'Список ваших курсов: \r\n\r\n{print_user_course}'
     )
     return ConversationHandler.END
 
 
 def change(update, context):
     """Функция обработки команды /change."""
-    chat = update.effective_chat
     user = update.message.from_user
     logger.info(
         f"Пользователь {user.first_name} начал диалог change курса"
     )
-    context.bot.send_message(
-        chat_id=chat.id,
-        text='''
+    send_message(
+        context.bot,
+        update.effective_chat.id,
+        '''
 Как называется курс которому вы \
 хотели бы изменить режим опроса?
 (введите команду /cancel_change если хотите прервать диалог)
@@ -488,7 +502,7 @@ def name_change(update, context):
     """обработка этапов 'беседы'."""
     user = update.message.from_user
     # проверяем наличие курса
-    session = s()
+    session = s_maker()
     course = (
         session.query(Telegram)
         .filter(Telegram.chat_id == update.effective_chat.id,
@@ -528,11 +542,8 @@ def name_change(update, context):
 def save_change(update, context):
     """Функция завершения обработки команды /change_course."""
     user = update.message.from_user
-    if update.message.text == 'Включить':
-        new_started = True
-    else:
-        new_started = False
-    session = s()
+    new_started = update.message.text == 'Включить'
+    session = s_maker()
     session.query(Telegram).filter(
         Telegram.name == data_to_change[update.effective_chat.id],
         Telegram.chat_id == update.effective_chat.id
@@ -594,11 +605,8 @@ def change_all(update, context):
 def save_all_change(update, context):
     """Функция завершения обработки команды /change_all."""
     user = update.message.from_user
-    if update.message.text == 'Включить':
-        new_started = True
-    else:
-        new_started = False
-    session = s()
+    new_started = update.message.text == 'Включить'
+    session = s_maker()
     session.query(Telegram).filter(
         Telegram.chat_id == update.effective_chat.id
     ).update({"started": new_started}, synchronize_session='fetch')
@@ -655,7 +663,7 @@ def save_clear(update, context):
     """Функция завершения обработки команды /clear."""
     user = update.message.from_user
     if update.message.text == 'Очистить':
-        session = s()
+        session = s_maker()
         session.query(Telegram).filter(
             Telegram.chat_id == update.effective_chat.id
         ).delete(synchronize_session='fetch')
@@ -697,10 +705,10 @@ def cancel_clear(update, context):
 
 def text_processing(update, context):
     """Функция обработки входящего сообщения."""
-    chat = update.effective_chat
-    context.bot.send_message(
-        chat_id=chat.id,
-        text='''
+    send_message(
+        context.bot,
+        update.effective_chat.id,
+        '''
 Простите, я не умею вести просто беседы.
 Введите комаду /about или /help для получения подробностей о моих умениях
 '''
@@ -730,7 +738,7 @@ def my_callback(context):
     """Функция выполняется периодически."""
     cts = int(time.time())
     logger.info(f'cts = {cts}')
-    session = s()
+    session = s_maker()
     courses = (
         session.query(
             Telegram.name,
@@ -845,7 +853,7 @@ def main():
         fallbacks=[CommandHandler('cancel_clear', cancel_clear)],
     )
 
-    session = s()
+    session = s_maker()
     all_client = (
         session.query(Telegram.chat_id)
         .filter(Telegram.started).distinct()
