@@ -1,5 +1,6 @@
 # импортируем классы, используемые для определения атрибутов модели
-from sqlalchemy import Boolean, BigInteger, Column, Integer, String, UniqueConstraint
+from sqlalchemy import (BigInteger, Boolean, Column, Integer, String,
+                        UniqueConstraint)
 # объект для подключения ядро базы данных
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -12,7 +13,7 @@ class Telegram(Base):
     __tablename__ = "telegram"
     id = Column(Integer, primary_key=True)
     name = Column(String)
-    chat_id = Column(Integer)
+    chat_id = Column(BigInteger)
     practicum_token = Column(String, unique=True)
     started = Column(Boolean)
     __table_args__ = (
