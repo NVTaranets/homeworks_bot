@@ -107,8 +107,10 @@ while True:
         time.sleep(30)
 
 
-def all_key_in_dict(keys, examine_dict):
-    """проверяет наличее всех ключей в словаре."""
+def all_key_in_dict(keys, examine_dict, message='Ожидался словарь!'):
+    """проверяет аргумент на тип и наличее всех ключей в словаре."""
+    if not isinstance(examine_dict, dict):
+        raise TypeError(message)
     return all([key in examine_dict for key in keys])
 
 
@@ -126,9 +128,11 @@ def send_message(bot, chat_id, message):
 
 def check_response(response):
     """Проверка правильности ответа API."""
-    if not isinstance(response, dict):
-        raise TypeError('От API домашки ожидался словарь в ответ на запрос!!!')
-    if (all_key_in_dict(KEYS_RESPONCE_REQUIRED, response)):
+    if (all_key_in_dict(
+        KEYS_RESPONCE_REQUIRED,
+        response,
+        'От API домашки ожидался словарь в ответ на запрос!!!'
+    )):
         result = response['homeworks']
         if isinstance(result, list):
             return result
@@ -137,10 +141,12 @@ def check_response(response):
 
 def parse_status(homework):
     """Парсинг статуса домашней работы."""
-    if not isinstance(homework, dict):
-        raise TypeError('От API домашки ожидался словарь в '
-                        'для расшифровки статуса работы!!!')
-    if not (all_key_in_dict(KEYS_HOMEWORK_REQUIRED, homework)):
+    if not (all_key_in_dict(
+        KEYS_HOMEWORK_REQUIRED,
+        homework,
+        'От API домашки ожидался словарь в '
+        'для расшифровки статуса работы!!!'
+    )):
         raise KeyError('Нет необходимых ключей в словаре'
                        f' домашней работы {homework}')
     name = homework['homework_name']
