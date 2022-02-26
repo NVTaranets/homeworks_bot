@@ -558,12 +558,12 @@ def save_change(update, context):
     session = None
     logger.info(
         f'Курс {user.first_name}: c именем = '
-        f'{data_to_change[update.effective_chat.id]} именен для '
+        f'{data_to_change[update.effective_chat.id]} изменен для '
         f'чата id= {update.effective_chat.id} состояние {update.message.text}.'
     )
     update.message.reply_text(
         f'Курс {user.first_name}: c именем = '
-        f'{data_to_change[update.effective_chat.id]} именен'
+        f'{data_to_change[update.effective_chat.id]} изменен'
         f'новое состояние {update.message.text}.',
         reply_markup=ReplyKeyboardRemove()
     )
